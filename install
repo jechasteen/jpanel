@@ -1,0 +1,10 @@
+#!/bin/env bash
+SERVER_FILES="server.js index.html public/ package.json"
+
+echo Installing jpanel
+sudo install jpanel /usr/local/bin
+
+sudo mkdir -vp /etc/xdg/jpanel
+sudo cp -vRt /etc/xdg/jpanel $SERVER_FILES
+mkdir -vp ~/.config/jpanel
+cp -vRt ~/.config/jpanel $SERVER_FILES
