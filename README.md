@@ -9,6 +9,7 @@ This project is in a 'pre-alpha' state, but I would love for people to give it a
 * gtk+3.0
 * X11 libs
 * node/npm
+* wmctrl
 
 ### Install
 
@@ -20,8 +21,8 @@ make
 Then make sure that you add two commands to your WM's auto start apps:
 
 ```
-/usr/local/bin/jpanel
 nodemon ~/.config/jpanel/server.js
+/usr/local/bin/jpanel
 ```
 
 Note: you'll have to install nodemon via `npm i -g nodemon` to run it this way.
