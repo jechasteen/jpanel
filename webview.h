@@ -442,6 +442,7 @@ public:
       : m_window(static_cast<GtkWidget *>(window)) {
     gtk_init_check(0, NULL);
     m_window = static_cast<GtkWidget *>(window);
+
     if (m_window == nullptr) {
       m_window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     }
@@ -475,9 +476,8 @@ public:
                        w->on_message(s);
                        g_free(s);
                      }),
-                     this);
-    webkit_user_content_manager_register_script_message_handler(manager,
-                                                                "external");
+                     this);    
+    webkit_user_content_manager_register_script_message_handler(manager, "external");
     init("window.external={invoke:function(s){window.webkit.messageHandlers."
          "external.postMessage(s);}}");
 
@@ -554,12 +554,20 @@ public:
   }
  
   void init(const std::string js) {
-    WebKitUserContentManager *manager =
-        webkit_web_view_get_user_content_manager(WEBKIT_WEB_VIEW(m_webview));
+    WebKitUserContentManager *manager = webkit_web_view_get_user_content_manager(WEBKIT_WEB_VIEW(m_webview));
     webkit_user_content_manager_add_script(
         manager, webkit_user_script_new(
                      js.c_str(), WEBKIT_USER_CONTENT_INJECT_TOP_FRAME,
                      WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START, NULL, NULL));
+  }
+
+  void style_sheet(const std::string css) {
+      auto s = webkit_user_style_sheet_new(css.c_str(),
+                                WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES,
+                                WEBKIT_USER_STYLE_LEVEL_USER,
+                                NULL, NULL);
+      WebKitUserContentManager *manager = webkit_web_view_get_user_content_manager(WEBKIT_WEB_VIEW(m_webview));
+      webkit_user_content_manager_add_style_sheet(manager, s);
   }
 
   void eval(const std::string js) {

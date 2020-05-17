@@ -24,7 +24,7 @@ mods.pager.insert = (w, el) => {
         const name = e.target.innerText;
         for (let i = 0; i < w.length; i++) {
             if (w[i].name == name) {
-                httpGet("/pager/switch/" + w[i].index);
+                // TODO: Finish Conversion...
                 return;
             }
         }
@@ -94,11 +94,14 @@ mods.clock = (el) => {
     el.innerText = new Date();
 };
 
+// A global object loaded by the application
+window.info = {};
+
 window.onload = () => {
-    setInterval(() => {
-        const info = JSON.parse(httpGet('/info'));
-        mods.pager.insert(info.workspaces, document.getElementById("pager"));
-        mods.tasklist(info.tasklist, document.getElementById("tasklist"));
+    window.update = new Event("data_update");
+    window.addEventListener("data_update", (event) => {
+        mods.pager.insert(window.info.workspaces, document.getElementById("pager"));
+        //mods.tasklist(window.info.tasklist, document.getElementById("tasklist"));
         mods.clock(document.getElementById("time"));
-    }, 1000);
+    });
 }
