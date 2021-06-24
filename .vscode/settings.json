@@ -72,6 +72,7 @@
         "semaphore": "cpp",
         "stop_token": "cpp",
         "forward_list": "cpp",
-        "shared_mutex": "cpp"
+        "shared_mutex": "cpp",
+        "regex": "cpp"
     }
 }
