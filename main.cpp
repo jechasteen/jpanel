@@ -3,6 +3,8 @@
 #include <X11/Xlib.h>
 #include <fstream>
 #include <iostream>
+#include <regex>
+#include <string>
 
 #define WEBVIEW_GTK
 
@@ -18,15 +20,20 @@ std::string load_file(std::string path)
 }
 
 // JS lambdas
+auto js_print = [](std::string s) -> std::string {
+    std::cout << s << std::endl;
+    return "";
+};
 
 std::string desktop_info = get_desktop_info().dump();
 auto json_desktop_info = [](std::string s) -> std::string {
     return desktop_info;
 };
 
-auto js_print = [](std::string s) -> std::string {
-    std::cout << s << std::endl;
-    return "";
+auto js_switch_desktop = [](std::string s) -> std::string {
+    std::regex e("[\\[,\\],\",\"]");
+    int index = stoi(std::regex_replace(s, e, ""));
+    switch_desktop(index);
 };
 
 int main(int argc, char* argv[])
@@ -42,6 +49,7 @@ int main(int argc, char* argv[])
     // bind js functions
     w.bind("print", js_print);
     w.bind("getDesktopInfo", json_desktop_info);
+    w.bind("switchDesktop", js_switch_desktop);
 
     w.navigate(load_file("index.html"));
     w.init(load_file("main.js"));

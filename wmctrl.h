@@ -13,6 +13,34 @@ using json = nlohmann::json;
 
 #define MAX_PROPERTY_LEN 4096
 
+static int client_msg(Display* disp, Window win, char* msg, /* {{{ */
+    unsigned long data0, unsigned long data1,
+    unsigned long data2, unsigned long data3,
+    unsigned long data4)
+{
+    XEvent event;
+    long mask = SubstructureRedirectMask | SubstructureNotifyMask;
+
+    event.xclient.type = ClientMessage;
+    event.xclient.serial = 0;
+    event.xclient.send_event = True;
+    event.xclient.message_type = XInternAtom(disp, msg, False);
+    event.xclient.window = win;
+    event.xclient.format = 32;
+    event.xclient.data.l[0] = data0;
+    event.xclient.data.l[1] = data1;
+    event.xclient.data.l[2] = data2;
+    event.xclient.data.l[3] = data3;
+    event.xclient.data.l[4] = data4;
+
+    if (XSendEvent(disp, DefaultRootWindow(disp), False, mask, &event)) {
+        return EXIT_SUCCESS;
+    } else {
+        std::cerr << "Cannot send " << msg << " event." << std::endl;
+        return EXIT_FAILURE;
+    }
+}
+
 static char* get_property(Display* display, Window window,
     Atom xa_prop_type, char* prop_name, ulong* size)
 {
@@ -99,9 +127,27 @@ static int longest_str(gchar** strv)
     return max;
 }
 
-static Screen *get_screen() {
+static Screen* get_screen()
+{
     Display* m_display = XOpenDisplay(NULL);
-    return DefaultScreenOfDisplay(m_display);
+    Screen * screen = DefaultScreenOfDisplay(m_display);
+    XCloseDisplay(m_display);
+    return screen;
+}
+
+static ulong* get_num_desktops(Display* display)
+{
+    ulong* num_desktops;
+    Window root = DefaultRootWindow(display);
+    if (!(num_desktops = (ulong*)get_property(display, root,
+              XA_CARDINAL, "_NET_NUMBER_OF_DESKTOPS", NULL))) {
+        if (!(num_desktops = (ulong*)get_property(display, root,
+                  XA_CARDINAL, "WIN_WORKSPACE_COUNT", NULL))) {
+            std::cerr << "Failed to get number of desktops! "
+                      << "(_NET_NUMBER_OF_DESKTOPS or _WIN_WORKSPACE_COUNT)" << std::endl;
+        }
+    }
+    return num_desktops;
 }
 
 static json get_desktop_info()
@@ -110,7 +156,6 @@ static json get_desktop_info()
     Screen* m_screen = DefaultScreenOfDisplay(m_display);
     Window m_root = DefaultRootWindow(m_display);
 
-    ulong* num_desktops = NULL;
     ulong* cur_desktop = NULL;
     ulong desktop_list_size = 0;
 
@@ -133,21 +178,14 @@ static json get_desktop_info()
     gchar** names = NULL;
     gboolean names_are_utf8 = TRUE;
 
-    if (!(num_desktops = (ulong*)get_property(m_display, m_root,
-                XA_CARDINAL, "_NET_NUMBER_OF_DESKTOPS", NULL))) {
-        if (!(cur_desktop == (ulong*)get_property(m_display, m_root, XA_CARDINAL, "_WIN_WORKSPACE", NULL))) {
-            std::cerr << "Failed to get numeber of desktop properties. "
-                        << "(_NET_NUMBER_OF_DESKTOPS or _WIN_WORKSPACE_COUNT)" << std::endl;
-            goto cleanup;
-        }
-    }
+    ulong* num_desktops = get_num_desktops(m_display);
 
     if (!(cur_desktop = (ulong*)get_property(m_display, m_root,
-                XA_CARDINAL, "_NET_CURRENT_DESKTOP", NULL))) {
+              XA_CARDINAL, "_NET_CURRENT_DESKTOP", NULL))) {
         if (!(cur_desktop = (ulong*)get_property(m_display, m_root,
-                    XA_CARDINAL, "_WIN_WORKSPACE", NULL))) {
+                  XA_CARDINAL, "_WIN_WORKSPACE", NULL))) {
             std::cerr << "Failed to get current desktop properties. "
-                        << "(_NET_CURRENT_DESKTOP or _WIN_WORKSPACE)" << std::endl;
+                      << "(_NET_CURRENT_DESKTOP or _WIN_WORKSPACE)" << std::endl;
             goto cleanup;
         }
     }
@@ -156,7 +194,7 @@ static json get_desktop_info()
         names_are_utf8 = FALSE;
         if ((list = get_property(m_display, m_root, XA_STRING, "_WIN_WORKSPACE_NAMES", &desktop_list_size)) == NULL) {
             std::cerr << "Failed to get desktop names properties. "
-                        << "(_NET_DESKTOP_NAMES or _WIN_WORKSPACE_NAMES)" << std::endl;
+                      << "(_NET_DESKTOP_NAMES or _WIN_WORKSPACE_NAMES)" << std::endl;
             // Ignore the error and give no desktop names
         }
     }
@@ -279,14 +317,14 @@ static json get_desktop_info()
 
     // build json
     for (i = 0; i < *num_desktops; i++) {
-        gchar *name = get_output_str(names[i], names_are_utf8);
+        gchar* name = get_output_str(names[i], names_are_utf8);
         if (i == *cur_desktop)
             ret["current"] = i;
         ret["desktops"][i] = {
-            {"name", name ? name : "N/A"},
-            {"geometry", desktop_geometry_str[i]},
-            {"viewport", desktop_viewport_str[i]},
-            {"workarea", desktop_workarea_str[i]}
+            { "name", name ? name : "N/A" },
+            { "geometry", desktop_geometry_str[i] },
+            { "viewport", desktop_viewport_str[i] },
+            { "workarea", desktop_workarea_str[i] }
         };
     }
 
@@ -302,6 +340,20 @@ cleanup:
     g_free(desktop_workarea);
     g_strfreev(desktop_workarea_str);
     g_free(list);
+    XCloseDisplay(m_display);
 
     return ret;
+}
+
+static int switch_desktop(int index)
+{
+    if (index < 0) {
+        std::cerr << "Invalid desktop ID: " << index << std::endl;
+        return EXIT_FAILURE;
+    }
+    Display *display = XOpenDisplay(NULL);
+    int result = client_msg(display, DefaultRootWindow(display), "_NET_CURRENT_DESKTOP",
+        (ulong)index, 0, 0, 0, 0);
+    XCloseDisplay(display);
+    return result;
 }
