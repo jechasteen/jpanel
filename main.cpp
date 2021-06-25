@@ -53,6 +53,7 @@ int main(int argc, char* argv[])
 
     w.navigate(load_file("index.html"));
     w.init(load_file("main.js"));
+    list_windows();
     w.run();
     return 0;
 }

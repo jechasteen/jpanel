@@ -130,7 +130,7 @@ static int longest_str(gchar** strv)
 static Screen* get_screen()
 {
     Display* m_display = XOpenDisplay(NULL);
-    Screen * screen = DefaultScreenOfDisplay(m_display);
+    Screen* screen = DefaultScreenOfDisplay(m_display);
     XCloseDisplay(m_display);
     return screen;
 }
@@ -351,9 +351,156 @@ static int switch_desktop(int index)
         std::cerr << "Invalid desktop ID: " << index << std::endl;
         return EXIT_FAILURE;
     }
-    Display *display = XOpenDisplay(NULL);
+    Display* display = XOpenDisplay(NULL);
     int result = client_msg(display, DefaultRootWindow(display), "_NET_CURRENT_DESKTOP",
         (ulong)index, 0, 0, 0, 0);
     XCloseDisplay(display);
     return result;
+}
+
+static Window* get_client_list(Display* disp, unsigned long* size)
+{
+    Window* client_list;
+
+    if ((client_list = (Window*)get_property(disp, DefaultRootWindow(disp),
+             XA_WINDOW, "_NET_CLIENT_LIST", size))
+        == NULL) {
+        if ((client_list = (Window*)get_property(disp, DefaultRootWindow(disp),
+                 XA_CARDINAL, "_WIN_CLIENT_LIST", size))
+            == NULL) {
+            std::cerr << "Failed to get client list." << std::endl
+                      << "(_NET_CLIENT_LIST or _WIN_CLIENT_LIST)" << std::endl;
+            return NULL;
+        }
+    }
+
+    return client_list;
+}
+
+static gchar* get_window_title(Display* disp, Window win)
+{
+    gchar* title_utf8;
+    gchar* wm_name;
+    gchar* net_wm_name;
+
+    wm_name = get_property(disp, win, XA_STRING, "WM_NAME", NULL);
+    net_wm_name = get_property(disp, win,
+        XInternAtom(disp, "UTF8_STRING", False), "_NET_WM_NAME", NULL);
+
+    if (net_wm_name) {
+        title_utf8 = g_strdup(net_wm_name);
+    } else {
+        if (wm_name) {
+            title_utf8 = g_locale_to_utf8(wm_name, -1, NULL, NULL, NULL);
+        } else {
+            title_utf8 = NULL;
+        }
+    }
+
+    g_free(wm_name);
+    g_free(net_wm_name);
+
+    return title_utf8;
+}
+
+static gchar* get_window_class(Display* disp, Window win)
+{
+    gchar* class_utf8;
+    gchar* wm_class;
+    unsigned long size;
+
+    wm_class = get_property(disp, win, XA_STRING, "WM_CLASS", &size);
+    if (wm_class) {
+        gchar* p_0 = strchr(wm_class, '\0');
+        if (wm_class + size - 1 > p_0) {
+            *(p_0) = '.';
+        }
+        class_utf8 = g_locale_to_utf8(wm_class, -1, NULL, NULL, NULL);
+    } else {
+        class_utf8 = NULL;
+    }
+
+    g_free(wm_class);
+
+    return class_utf8;
+}
+
+static int list_windows()
+{
+    Display* display = XOpenDisplay(NULL);
+    Window* client_list;
+    ulong client_list_size;
+    int i;
+    int max_client_machine_len = 0;
+
+    if ((client_list = get_client_list(display, &client_list_size)) == NULL) {
+        return EXIT_FAILURE;
+    }
+
+    for (i = 0; i < client_list_size / sizeof(Window); i++) {
+        gchar* client_machine;
+        if ((client_machine = get_property(display, client_list[i],
+                 XA_STRING, "WM_CLIENT_MACHINE", NULL))) {
+            max_client_machine_len = strlen(client_machine);
+        }
+        g_free(client_machine);
+    }
+
+    // print the list
+    for (i = 0; i < client_list_size / sizeof(Window); i++) {
+        std::cout << *client_list[i] << std::endl;
+        gchar* title_utf8 = get_window_title(display, client_list[i]);
+        gchar* title_out = get_output_str(title_utf8, TRUE);
+        gchar* client_machine;
+        gchar* class_out = get_window_class(display, client_list[i]);
+        ulong* pid;
+        ulong* desktop;
+        int x, y, junkx, junky;
+        uint wwidth, wheight, bw, depth;
+        Window junkroot;
+
+        // Desktop ID
+        if ((desktop = (ulong*)get_property(display, client_list[i],
+                 XA_CARDINAL, "_NET_WM_DESKTOP", NULL))
+            == NULL) {
+            desktop = (ulong*)get_property(display, client_list[i],
+                XA_CARDINAL, "_WIN_WORKSPACE", NULL);
+        }
+
+        // Client Machine
+        client_machine = get_property(display, client_list[i],
+                XA_STRING, "WM_CLIENT_MACHINE", NULL);
+
+        // pid
+        pid = (ulong*)get_property(display, client_list[i],
+                XA_CARDINAL, "_NET_WM_PID", NULL);
+
+        // geometry
+        XGetGeometry(display, client_list[i], &junkroot, &junkx, &junky,
+                &wwidth, &wheight, &bw, &depth);
+        XTranslateCoordinates(display, client_list[i], junkroot, junkx, junky,
+                &x, &y, &junkroot);
+
+        // Special desktop id -1 means "all desktops," so we have to convert
+        // the desktop value to signed long
+        printf("0x%.8lx %2ld", client_list[i], desktop ? (long)*desktop : 0);
+        printf(" %-6lu", pid ? *pid : 0);
+        printf(" %-4d %-4d %-4d %-4d", x, y, wwidth, wheight);
+        printf(" %-20s ", class_out ? class_out : "N/A");
+        printf(" %*s %s\n",
+            max_client_machine_len,
+            client_machine ? client_machine : "N/A",
+            title_out ? title_out : "N/A");
+        
+        g_free(title_utf8);
+        g_free(title_out);
+        g_free(desktop);
+        g_free(client_machine);
+        g_free(class_out);
+        g_free(pid);
+    }
+    g_free(client_list);
+
+    XCloseDisplay(display);
+    return EXIT_SUCCESS;
 }
